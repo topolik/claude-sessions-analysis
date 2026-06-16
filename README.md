@@ -4,8 +4,11 @@ A container-native data pipeline that parses, verifies, profiles, and analyzes C
 
 Use your agent with:
 ```
-Run The 4-Step Workflow and analyze token use. Then answer these questions:
+Run The 4-Step Workflow and analyze token use.
+```
 
+Then:
+```
   1. **Where are my tokens going?** Break down total token spend by tool name, session, and event
   type. Show input vs output vs cache_read vs cache_creation ratios. Identify the top 10
   most expensive tool calls and sessions.
@@ -22,6 +25,52 @@ Run The 4-Step Workflow and analyze token use. Then answer these questions:
   tool_name = 'Read' or tool_name = 'Bash' to extract file paths. Find duplicate reads of
   the same path within a session. Rank by wasted tokens on redundant reads.
 ```
+
+Or
+
+```
+  1. **What's my ROI per session** — which sessions produce real work vs. just burn tokens?
+  
+  We know cost per session but not value. Correlate token spend against actual artifacts
+  produced: Edit/Write calls that succeed, lines changed, files created. Sessions with 7K
+  events but low edit counts are pure exploration waste. This gives you a "cost per useful
+  edit" metric to benchmark against.
+
+  2. Which tool call sequences predict failure — and can I short-circuit them?
+
+  We counted errors per tool, but not the chains leading to them. Are there recurring
+  patterns like Edit→fail→Read→Edit→succeed or Bash→Bash→Bash→fail→Bash→fail→give up?
+  Identifying 3-4 step anti-patterns lets you write hooks or instructions that break the loop
+  early.
+
+  3. What's the real cost of subagents vs. inline work, and are they being spawned at the 
+  right model tier?
+
+  Many Agent calls appeared, but we never unpacked what model they ran, how many tokens they
+  consumed downstream (the child sessions), or whether the work could have been done inline.
+  Your CLAUDE.md has explicit model routing rules (haiku for explore, sonnet for codegen,
+  opus for security). Are those being followed? Misrouted subagents are the silent budget
+  killer.
+
+  4. How does context size grow within a session, and where are the compaction cliffs?
+
+  Cache creation spikes signal context rebuilds — either from /compact, context overflow, or
+  cache TTL expiry. Plotting cache_creation_tokens as a time series within each long session
+  shows exactly when context gets rebuilt and how much it costs each time. The monster
+  sessions likely have repeated compaction cycles that each cost 5-10M tokens. Knowing the
+  optimal turn count before compaction saves you from both extremes: compacting too early
+  (wasted cache warmth) and too late (context overflow).
+
+  5. When do I work, and does my token efficiency change across the day/week?
+
+  The timestamp data is sitting unused. Token efficiency (output per cache-read, edits per
+  turn) likely varies by time of day and session age. Late-night sessions or Friday
+  afternoons might show higher error rates, more redundant reads, or longer tool chains. This
+  isn't just curiosity — it tells you when to trust the agent with autonomous work vs. when
+  to keep it on a shorter leash.
+```
+
+
 
 ---
 
