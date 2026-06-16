@@ -4,6 +4,8 @@ Please refer to the main repository [README.md](README.md) for the architecture,
 
 ## Quick Reference Commands
 
+Perform the whole 3-step workflow:
+
 ### Step 1: Ingest and Verify Data
 ```bash
 ./load_data.sh

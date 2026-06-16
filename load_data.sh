@@ -55,5 +55,5 @@ else
     claude-analytics:latest \
     python3 analytics/verify_relational_reconstruction.py --latest
 
-  echo -e "\n🎉 Step 1: Database Ingestion & Lossless Verification Complete!"
+  echo -e "\n🎉 Database Ingestion & Lossless Verification Complete!"
 fi

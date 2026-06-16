@@ -12,14 +12,14 @@ if [ ! -f "output/claude_sessions.db" ]; then
   exit 1
 fi
 
-echo -e "\n=== STEP 4: Generating Schema Field-Level Usage Profile ==="
+echo -e "\n=== STEP 1: Generating Schema Field-Level Usage Profile ==="
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "$SCRIPT_DIR:/workspace" \
   claude-analytics:latest \
   python3 analytics/run_analytics.py
 
-echo -e "\n=== STEP 5: Generating Multi-Category Top 10 Rank Deep Dive ==="
+echo -e "\n=== STEP 2: Generating Multi-Category Top 10 Rank Deep Dive ==="
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "$SCRIPT_DIR:/workspace" \
@@ -27,7 +27,7 @@ docker run --rm \
   python3 analytics/analyze_top_10.py
 
 # Containerized compilation of compiled reports to elegant HTML using pandoc
-echo -e "\n=== STEP 6: Compiling Markdown Reports to Professional HTML (Inside Container) ==="
+echo -e "\n=== STEP 3: Compiling Markdown Reports to Professional HTML (Inside Container) ==="
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "$SCRIPT_DIR:/workspace" \
@@ -38,4 +38,4 @@ echo "  -> Compiled: output/analytics_report.html"
 echo "  -> Compiled: output/top_10_analytics.html"
 echo "  -> Compiled: output/observations.html"
 
-echo -e "\n🎉 Step 2: Downstream Analytical Reports & Dashboards Compiled Successfully!"
+echo -e "\n🎉 Downstream Analytical Reports & Dashboards Compiled Successfully!"
