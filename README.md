@@ -48,8 +48,8 @@ Or
 
   Many Agent calls appeared, but we never unpacked what model they ran, how many tokens they
   consumed downstream (the child sessions), or whether the work could have been done inline.
-  Your CLAUDE.md has explicit model routing rules (haiku for explore, sonnet for codegen,
-  opus for security). Are those being followed? Misrouted subagents are the silent budget
+  Does your CLAUDE.md has explicit model routing rules (haiku for explore, sonnet for codegen,
+  opus for security)? Are those being followed? Misrouted subagents are the silent budget
   killer.
 
   4. How does context size grow within a session, and where are the compaction cliffs?
