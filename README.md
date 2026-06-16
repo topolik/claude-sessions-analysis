@@ -1,6 +1,27 @@
 # Claude Session Ingestion & Relational Analytics Pipeline
 
-A container-native data pipeline that parses, verifies, profiles, and analyzes Claude Code session logs (`*.jsonl` files) into a structured relational SQLite database.
+A container-native data pipeline that parses, verifies, profiles, and analyzes Claude Code session logs (`~/.claude/projects/*/*.jsonl` files) into a structured relational self-verifying SQLite database.
+
+Use your agent with:
+```
+Run The 4-Step Workflow and analyze token use. Then answer these questions:
+
+  1. **Where are my tokens going?** Break down total token spend by tool name, session, and event
+  type. Show input vs output vs cache_read vs cache_creation ratios. Identify the top 10
+  most expensive tool calls and sessions.
+  2. **Which tools fail most, and how much do retries cost?** Calculate error rate per tool name.
+  For each failed tool call, find the subsequent retry and sum the tokens burned on
+  failure+retry pairs. Rank tools by wasted tokens.
+  3. **How long are my sessions, and where do they bloat?** For each session, plot event count
+  and cumulative token spend. Flag sessions that exceed 50K output tokens or 200 events.
+  Identify the event types that contribute most to session bloat.
+  4. **What's my cache hit rate, and what kills it?** Calculate cache_read_tokens / input_tokens
+  ratio per session and over time. Find sessions or time windows where cache hit rate drops
+  below 50%. Correlate cache drops with session length and time gaps between events.
+  5. **Which files and tools do I re-read unnecessarily?** Parse input_json from tool_calls where
+  tool_name = 'Read' or tool_name = 'Bash' to extract file paths. Find duplicate reads of
+  the same path within a session. Rank by wasted tokens on redundant reads.
+```
 
 ---
 
@@ -26,7 +47,7 @@ Review the generated reports in `output/` to audit token consumption, identify b
 ### Step 4: Extend (Deep-Dive & Optimization)
 Create new analytics scripts and run them inside the container:
 ```bash
-./load_data.sh python3 src/your_script.py
+./load_data.sh python3 src/deep_dive.py
 ```
 Or run custom SQL queries directly:
 ```bash
@@ -42,7 +63,6 @@ Or run custom SQL queries directly:
 ├── analyze.sh                      # Step 2: Profiles schema & compiles HTML dashboards
 ├── README.md                       # Project documentation
 ├── AGENT.md                        # AI agent instructions (referenced by CLAUDE.md & GEMINI.md)
-├── projects/                       # Raw session log JSONL files (mounted read-only)
 ├── output/                         # All auto-generated DB/HTML/MD files
 │   ├── claude_sessions.db          # Relational SQLite DB (losslessly populated)
 │   ├── schema.sql                  # Auto-emitted SQL schema definition
