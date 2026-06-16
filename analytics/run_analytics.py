@@ -19,16 +19,15 @@ def profile_database():
     report.append("## 1. Table-Level High-Level Metrics")
     report.append("| Table Name | Total Rows | description |")
     report.append("| :--- | :--- | :--- |")
-    for table in ["sessions", "events", "messages", "tool_calls", "tool_results", "event_metadata", "part_metadata"]:
+    for table in ["sessions", "events", "messages", "tool_calls", "tool_results", "attachments"]:
         count = pd.read_sql_query(f"SELECT COUNT(*) as cnt FROM {table}", conn).iloc[0]["cnt"]
         desc = {
             "sessions": "Unique user session references.",
-            "events": "Chronological stream of all transaction events (user, assistant, system, etc.).",
-            "messages": "Full parsed textual content of messages.",
-            "tool_calls": "Detailed invocations of tool use by the assistant.",
-            "tool_results": "Execution output content and status for tool calls.",
-            "event_metadata": "Entity-Attribute-Value relational storage for auxiliary event metadata.",
-            "part_metadata": "Entity-Attribute-Value relational storage for auxiliary message parts delta variables."
+            "events": "Chronological stream of all transaction events (user, assistant, system, etc.) with explicit root-level columns.",
+            "messages": "Full parsed textual content of messages with explicit message-level metadata columns.",
+            "tool_calls": "Detailed invocations of tool use by the assistant with explicit caller info.",
+            "tool_results": "Execution output content, is_error state, and original JSON-serialized content.",
+            "attachments": "Unified, typed first-class relational storage for all attachment fields."
         }[table]
         report.append(f"| `{table}` | {count:,} | {desc} |")
     report.append("\n")
@@ -37,12 +36,11 @@ def profile_database():
     report.append("## 2. Column-by-Column Population & Distinctness Profiles")
     tables_cols = {
         "sessions": ["session_id", "file_path", "native_session_id"],
-        "events": ["row_id", "session_id", "event_id", "timestamp", "event_type", "role", "input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"],
-        "messages": ["message_id", "event_row_id", "content"],
-        "tool_calls": ["tool_use_id", "event_row_id", "tool_name", "input_json"],
-        "tool_results": ["tool_use_id", "event_row_id", "output_content", "is_error"],
-        "event_metadata": ["event_row_id", "parent_key", "key", "value_json"],
-        "part_metadata": ["event_row_id", "part_index", "key", "value_json"]
+        "events": ["row_id", "session_id", "event_id", "timestamp", "event_type", "role", "input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "agentName", "operation", "parentUuid", "gitBranch", "version", "isMeta", "durationMs", "bridgeSessionId", "queuePriority", "apiErrorStatus", "isApiErrorMessage", "origin"],
+        "messages": ["message_id", "event_row_id", "content", "stop_reason", "model", "container", "context_management"],
+        "tool_calls": ["tool_use_id", "event_row_id", "part_index", "tool_name", "input_json", "caller"],
+        "tool_results": ["tool_use_id", "event_row_id", "part_index", "output_content", "is_error", "content_json"],
+        "attachments": ["event_row_id", "name", "content", "path", "type", "stderr", "command", "stdout", "toolUseID", "exitCode", "snippet", "newDate", "commandMode", "prompt"]
     }
 
     for table, columns in tables_cols.items():
@@ -50,12 +48,21 @@ def profile_database():
         report.append("| Column Name | Populated Rows | Null/Default Rows | Population % | Unique Values |")
         report.append("| :--- | :--- | :--- | :--- | :--- |")
         
+        # Get actual columns present in the database table
+        cursor = conn.cursor()
+        cursor.execute(f"PRAGMA table_info({table})")
+        existing_cols = {col[1] for col in cursor.fetchall()}
+        
         # Get total rows
         total_rows = pd.read_sql_query(f"SELECT COUNT(*) as cnt FROM {table}", conn).iloc[0]["cnt"]
         if total_rows == 0:
             total_rows = 1 # Avoid division by zero
             
         for col in columns:
+            if col not in existing_cols:
+                # Skip columns that do not exist in the dynamic database
+                continue
+                
             # For token metrics, they are considered default if 0. For text/id columns, check NULL or empty.
             is_numeric_token = "tokens" in col or "cache" in col
             if is_numeric_token:

@@ -3,8 +3,23 @@ import sqlite3
 import glob
 import json
 
+_known_columns = {}
+
+def ensure_columns_exist(cursor, table_name, col_names):
+    if table_name not in _known_columns:
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        _known_columns[table_name] = {col[1] for col in cursor.fetchall()}
+        
+    for col in col_names:
+        if col not in _known_columns[table_name]:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN [{col}] TEXT")
+            _known_columns[table_name].add(col)
+
 def setup_database(conn):
     cursor = conn.cursor()
+
+    # Clear cached columns for a clean run
+    _known_columns.clear()
 
     # 1. Sessions Table (session_id is file-path MD5, native_session_id is the parsed sessionId)
     cursor.execute("""
@@ -48,6 +63,7 @@ def setup_database(conn):
     CREATE TABLE IF NOT EXISTS tool_calls (
         tool_use_id TEXT,
         event_row_id INTEGER,
+        part_index INTEGER,
         tool_name TEXT,
         input_json TEXT,
         PRIMARY KEY (event_row_id, tool_use_id),
@@ -60,33 +76,30 @@ def setup_database(conn):
     CREATE TABLE IF NOT EXISTS tool_results (
         tool_use_id TEXT,
         event_row_id INTEGER,
+        part_index INTEGER,
         output_content TEXT,
         is_error INTEGER,
+        content_json TEXT,
         PRIMARY KEY (event_row_id, tool_use_id),
         FOREIGN KEY(event_row_id) REFERENCES events(row_id)
     );
     """)
 
-    # 6. Strict Event Metadata Table (Auxiliary event fields at root, message, and usage levels)
+    # 6. Attachments Table
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS event_metadata (
-        event_row_id INTEGER,
-        parent_key TEXT,
-        key TEXT,
-        value_json TEXT,
-        PRIMARY KEY (event_row_id, parent_key, key),
+    CREATE TABLE IF NOT EXISTS attachments (
+        event_row_id INTEGER PRIMARY KEY,
         FOREIGN KEY(event_row_id) REFERENCES events(row_id)
     );
     """)
 
-    # 7. Strict Content Part Metadata Table (Auxiliary message part keys)
+    # 7. Message Parts Table (for other part types like thinking, signature)
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS part_metadata (
+    CREATE TABLE IF NOT EXISTS message_parts (
+        row_id INTEGER PRIMARY KEY AUTOINCREMENT,
         event_row_id INTEGER,
         part_index INTEGER,
-        key TEXT,
-        value_json TEXT,
-        PRIMARY KEY (event_row_id, part_index, key),
+        part_type TEXT,
         FOREIGN KEY(event_row_id) REFERENCES events(row_id)
     );
     """)
@@ -97,8 +110,8 @@ def setup_database(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_event ON messages(event_row_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_calls_event ON tool_calls(event_row_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_results_event ON tool_results(event_row_id);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_event_metadata_row ON event_metadata(event_row_id);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_part_metadata_row ON part_metadata(event_row_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_attachments_event ON attachments(event_row_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_parts_event ON message_parts(event_row_id);")
     conn.commit()
 
 def ingest_files():
@@ -184,50 +197,78 @@ def ingest_files():
                             cache_read = usage.get('cache_read_input_tokens', 0)
                             cache_create = usage.get('cache_creation_input_tokens', 0)
 
-                    # Insert core event
-                    cursor.execute("""
-                    INSERT INTO events (session_id, event_id, timestamp, event_type, role, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (session_id, event_id, timestamp, event_type, role, input_tokens, output_tokens, cache_read, cache_create))
+                    # Build fields dictionary dynamically for the events table
+                    event_fields = {
+                        'session_id': session_id,
+                        'event_id': event_id,
+                        'timestamp': timestamp,
+                        'event_type': event_type,
+                        'role': role,
+                        'input_tokens': input_tokens,
+                        'output_tokens': output_tokens,
+                        'cache_read_tokens': cache_read,
+                        'cache_creation_tokens': cache_create
+                    }
 
-                    event_row_id = cursor.lastrowid
-                    total_rows_inserted += 1
-
-                    # Store all auxiliary root-level metadata
+                    # Add auxiliary root-level keys
                     for k, v in data.items():
                         if k not in ('uuid', 'messageId', 'timestamp', 'type', 'sessionId', 'message'):
                             if k == 'content' and event_type == 'system':
                                 continue
-                            cursor.execute("""
-                            INSERT OR REPLACE INTO event_metadata (event_row_id, parent_key, key, value_json)
-                            VALUES (?, ?, ?, ?)
-                            """, (event_row_id, 'root', k, json.dumps(v)))
+                            if isinstance(v, (list, dict)):
+                                event_fields[k] = json.dumps(v)
+                            else:
+                                event_fields[k] = v
 
-                    # Parse message/tool contents for query structured tables
+                    # Add auxiliary usage fields
                     if isinstance(msg_data, dict):
-                        # Store all auxiliary message-level metadata
-                        for k, v in msg_data.items():
-                            if k not in ('role', 'usage', 'content'):
-                                cursor.execute("""
-                                INSERT OR REPLACE INTO event_metadata (event_row_id, parent_key, key, value_json)
-                                VALUES (?, ?, ?, ?)
-                                """, (event_row_id, 'message', k, json.dumps(v)))
-
-                        # Store all auxiliary usage-level metadata
                         usage = msg_data.get('usage') or {}
                         if isinstance(usage, dict):
                             for k, v in usage.items():
                                 if k not in ('input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'):
-                                    cursor.execute("""
-                                    INSERT OR REPLACE INTO event_metadata (event_row_id, parent_key, key, value_json)
-                                    VALUES (?, ?, ?, ?)
-                                    """, (event_row_id, 'usage', k, json.dumps(v)))
+                                    col_name = f"usage_{k}"
+                                    if isinstance(v, (list, dict)):
+                                        event_fields[col_name] = json.dumps(v)
+                                    else:
+                                        event_fields[col_name] = v
+
+                    # Insert core & auxiliary event fields dynamically into first-class columns
+                    ensure_columns_exist(cursor, 'events', event_fields.keys())
+                    e_columns = list(event_fields.keys())
+                    e_placeholders = ', '.join(['?'] * len(e_columns))
+                    safe_e_columns = [f"[{col}]" for col in e_columns]
+                    e_sql = f"INSERT INTO events ({', '.join(safe_e_columns)}) VALUES ({e_placeholders})"
+                    cursor.execute(e_sql, list(event_fields.values()))
+
+                    event_row_id = cursor.lastrowid
+                    total_rows_inserted += 1
+
+                    # Parse message/tool contents for query structured tables
+                    if isinstance(msg_data, dict):
+                        message_fields = {
+                            'message_id': event_id or f"msg_{event_row_id}",
+                            'event_row_id': event_row_id,
+                            'content': msg_data.get('content') if isinstance(msg_data.get('content'), str) else None
+                        }
+
+                        # Store auxiliary message-level metadata columns if they exist
+                        for k, v in msg_data.items():
+                            if k not in ('role', 'usage', 'content'):
+                                if isinstance(v, (list, dict)):
+                                    message_fields[k] = json.dumps(v)
+                                else:
+                                    message_fields[k] = v
+
+                        # Insert into messages table
+                        ensure_columns_exist(cursor, 'messages', message_fields.keys())
+                        m_columns = list(message_fields.keys())
+                        m_placeholders = ', '.join(['?'] * len(m_columns))
+                        safe_m_columns = [f"[{col}]" for col in m_columns]
+                        m_sql = f"INSERT OR REPLACE INTO messages ({', '.join(safe_m_columns)}) VALUES ({m_placeholders})"
+                        cursor.execute(m_sql, list(message_fields.values()))
 
                         content = msg_data.get('content')
-                        if isinstance(content, str):
-                            message_id = event_id or f"msg_{event_row_id}"
-                            cursor.execute("INSERT OR REPLACE INTO messages (message_id, event_row_id, content) VALUES (?, ?, ?)", (message_id, event_row_id, content))
-                        elif isinstance(content, list):
+                        if isinstance(content, list):
                             for i, part in enumerate(content):
                                 if not isinstance(part, dict):
                                     continue
@@ -236,19 +277,34 @@ def ingest_files():
                                     text = part.get('text', '')
                                     message_id = f"msg_{event_row_id}_{i}"
                                     cursor.execute("INSERT OR REPLACE INTO messages (message_id, event_row_id, content) VALUES (?, ?, ?)", (message_id, event_row_id, text))
-                                    # Store auxiliary text-part keys if any
-                                    for pk, pv in part.items():
-                                        if pk not in ('type', 'text'):
-                                            cursor.execute("INSERT OR REPLACE INTO part_metadata (event_row_id, part_index, key, value_json) VALUES (?, ?, ?, ?)", (event_row_id, i, pk, json.dumps(pv)))
                                 elif part_type == 'tool_use':
                                     tool_use_id = part.get('id')
                                     tool_name = part.get('name')
                                     tool_input = json.dumps(part.get('input', {}))
-                                    cursor.execute("INSERT OR REPLACE INTO tool_calls (tool_use_id, event_row_id, tool_name, input_json) VALUES (?, ?, ?, ?)", (tool_use_id, event_row_id, tool_name, tool_input))
-                                    # Store auxiliary tool_use-part keys if any
+
+                                    tool_call_fields = {
+                                        'tool_use_id': tool_use_id,
+                                        'event_row_id': event_row_id,
+                                        'part_index': i,
+                                        'tool_name': tool_name,
+                                        'input_json': tool_input
+                                    }
+
+                                    # Add other tool_use auxiliary keys
                                     for pk, pv in part.items():
                                         if pk not in ('type', 'id', 'name', 'input'):
-                                            cursor.execute("INSERT OR REPLACE INTO part_metadata (event_row_id, part_index, key, value_json) VALUES (?, ?, ?, ?)", (event_row_id, i, pk, json.dumps(pv)))
+                                            if isinstance(pv, (list, dict)):
+                                                tool_call_fields[pk] = json.dumps(pv)
+                                            else:
+                                                tool_call_fields[pk] = pv
+
+                                    ensure_columns_exist(cursor, 'tool_calls', tool_call_fields.keys())
+                                    tc_columns = list(tool_call_fields.keys())
+                                    tc_placeholders = ', '.join(['?'] * len(tc_columns))
+                                    safe_tc_columns = [f"[{col}]" for col in tc_columns]
+                                    tc_sql = f"INSERT OR REPLACE INTO tool_calls ({', '.join(safe_tc_columns)}) VALUES ({tc_placeholders})"
+                                    cursor.execute(tc_sql, list(tool_call_fields.values()))
+
                                 elif part_type == 'tool_result':
                                     tool_use_id = part.get('tool_use_id')
                                     tool_output = part.get('content', '')
@@ -259,29 +315,75 @@ def ingest_files():
                                                 tool_output_str += subpart.get('text', '')
                                         tool_output = tool_output_str
                                     is_error = 1 if part.get('is_error') else 0
-                                    cursor.execute("INSERT OR REPLACE INTO tool_results (tool_use_id, event_row_id, output_content, is_error) VALUES (?, ?, ?, ?)", (tool_use_id, event_row_id, tool_output, is_error))
-                                    # Store auxiliary tool_result-part keys if any (e.g. content structure if complex, or other fields)
+
+                                    tool_result_fields = {
+                                        'tool_use_id': tool_use_id,
+                                        'event_row_id': event_row_id,
+                                        'part_index': i,
+                                        'output_content': tool_output,
+                                        'is_error': is_error,
+                                        'content_json': json.dumps(part.get('content', ''))
+                                    }
+
+                                    # Add other tool_result auxiliary keys
                                     for pk, pv in part.items():
-                                        if pk not in ('type', 'tool_use_id', 'is_error'):
-                                            cursor.execute("INSERT OR REPLACE INTO part_metadata (event_row_id, part_index, key, value_json) VALUES (?, ?, ?, ?)", (event_row_id, i, pk, json.dumps(pv)))
+                                        if pk not in ('type', 'tool_use_id', 'is_error', 'content'):
+                                            if isinstance(pv, (list, dict)):
+                                                tool_result_fields[pk] = json.dumps(pv)
+                                            else:
+                                                tool_result_fields[pk] = pv
+
+                                    ensure_columns_exist(cursor, 'tool_results', tool_result_fields.keys())
+                                    tr_columns = list(tool_result_fields.keys())
+                                    tr_placeholders = ', '.join(['?'] * len(tr_columns))
+                                    safe_tr_columns = [f"[{col}]" for col in tr_columns]
+                                    tr_sql = f"INSERT OR REPLACE INTO tool_results ({', '.join(safe_tr_columns)}) VALUES ({tr_placeholders})"
+                                    cursor.execute(tr_sql, list(tool_result_fields.values()))
+
                                 else:
-                                    # For other part types (e.g. thinking, signature), store all keys in part_metadata
+                                    # For other part types (e.g. thinking, signature), store in message_parts table
+                                    part_fields = {
+                                        'event_row_id': event_row_id,
+                                        'part_index': i,
+                                        'part_type': part_type
+                                    }
                                     for pk, pv in part.items():
-                                        cursor.execute("INSERT OR REPLACE INTO part_metadata (event_row_id, part_index, key, value_json) VALUES (?, ?, ?, ?)", (event_row_id, i, pk, json.dumps(pv)))
+                                        if pk != 'type':
+                                            if isinstance(pv, (list, dict)):
+                                                part_fields[pk] = json.dumps(pv)
+                                            else:
+                                                part_fields[pk] = pv
+
+                                    ensure_columns_exist(cursor, 'message_parts', part_fields.keys())
+                                    mp_columns = list(part_fields.keys())
+                                    mp_placeholders = ', '.join(['?'] * len(mp_columns))
+                                    safe_mp_columns = [f"[{col}]" for col in mp_columns]
+                                    mp_sql = f"INSERT OR REPLACE INTO message_parts ({', '.join(safe_mp_columns)}) VALUES ({mp_placeholders})"
+                                    cursor.execute(mp_sql, list(part_fields.values()))
 
                     elif event_type == 'system' and data.get('content'):
                         message_id = f"sys_{event_row_id}"
                         cursor.execute("INSERT OR REPLACE INTO messages (message_id, event_row_id, content) VALUES (?, ?, ?)", (message_id, event_row_id, data.get('content')))
 
-                    # For system and attachment events, also store attachments in part_metadata or event_metadata
-                    if event_type == 'attachment' and data.get('attachment'):
+                    # Store attachments in attachments table for any event containing an attachment
+                    if data.get('attachment'):
                         attachment = data.get('attachment')
                         if isinstance(attachment, dict):
+                            attachment_fields = {
+                                'event_row_id': event_row_id
+                            }
                             for k, v in attachment.items():
-                                cursor.execute("""
-                                INSERT OR REPLACE INTO part_metadata (event_row_id, part_index, key, value_json)
-                                VALUES (?, ?, ?, ?)
-                                """, (event_row_id, -1, k, json.dumps(v)))
+                                if isinstance(v, (list, dict)):
+                                    attachment_fields[k] = json.dumps(v)
+                                else:
+                                    attachment_fields[k] = v
+
+                            ensure_columns_exist(cursor, 'attachments', attachment_fields.keys())
+                            a_columns = list(attachment_fields.keys())
+                            a_placeholders = ', '.join(['?'] * len(a_columns))
+                            safe_a_columns = [f"[{col}]" for col in a_columns]
+                            a_sql = f"INSERT OR REPLACE INTO attachments ({', '.join(safe_a_columns)}) VALUES ({a_placeholders})"
+                            cursor.execute(a_sql, list(attachment_fields.values()))
 
         except Exception as e:
             print(f"Error reading file {file_path}: {e}")

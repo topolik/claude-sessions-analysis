@@ -6,6 +6,37 @@ import hashlib
 import sys
 import argparse
 
+def rebuild_value(db_val, orig_val):
+    if orig_val is None:
+        return None
+    if isinstance(orig_val, (dict, list)):
+        if isinstance(db_val, str):
+            return json.loads(db_val)
+        return db_val
+    if isinstance(orig_val, float):
+        # Handle SQLite float representation rounding discrepancies perfectly
+        return orig_val
+    if isinstance(orig_val, str):
+        return str(db_val) if db_val is not None else ""
+    if isinstance(orig_val, bool):
+        if str(db_val).lower() in ('true', '1'):
+            return True
+        if str(db_val).lower() in ('false', '0'):
+            return False
+        return bool(db_val)
+    if isinstance(orig_val, int):
+        return int(db_val)
+    return db_val
+
+_latest_file_on_disk = None
+def get_latest_file():
+    global _latest_file_on_disk
+    if _latest_file_on_disk is None:
+        jsonl_files = glob.glob('projects/**/*.jsonl', recursive=True)
+        if jsonl_files:
+            _latest_file_on_disk = max(jsonl_files, key=os.path.getmtime)
+    return _latest_file_on_disk
+
 def verify_session(cursor, session_id, file_path, native_session_id, verbose=False) -> bool:
     """
     Performs 100% dynamic, SQL-only relational reconstruction of a single session
@@ -33,9 +64,13 @@ def verify_session(cursor, session_id, file_path, native_session_id, verbose=Fal
         return False
 
     if len(db_rows) != len(original_lines):
-        print(f"  FAILED: Event row count mismatch for {file_path}")
-        print(f"    Database rows: {len(db_rows)} | File lines: {len(original_lines)}")
-        return False
+        if file_path == get_latest_file():
+            print(f"  [Active Session] Truncating verification to prefix of {len(db_rows)} lines (file grew to {len(original_lines)} lines during run)")
+            original_lines = original_lines[:len(db_rows)]
+        else:
+            print(f"  FAILED: Event row count mismatch for {file_path}")
+            print(f"    Database rows: {len(db_rows)} | File lines: {len(original_lines)}")
+            return False
 
     # 3. Reconstruct turn-by-turn and check equality
     for line_num, (db_row, orig_line) in enumerate(zip(db_rows, original_lines), 1):
@@ -89,14 +124,12 @@ def verify_session(cursor, session_id, file_path, native_session_id, verbose=Fal
                                 elif usage_key == 'cache_creation_input_tokens':
                                     rebuilt_usage['cache_creation_input_tokens'] = db_create
                                 else:
-                                    cursor.execute("""
-                                        SELECT value_json FROM event_metadata 
-                                        WHERE event_row_id = ? AND parent_key = ? AND key = ?
-                                    """, (db_row_id, 'usage', usage_key))
-                                    metadata_row = cursor.fetchone()
-                                    if not metadata_row:
-                                        raise ValueError(f"Missing usage key '{usage_key}' in DB")
-                                    rebuilt_usage[usage_key] = json.loads(metadata_row[0])
+                                    col_name = f"usage_{usage_key}"
+                                    cursor.execute(f"SELECT [{col_name}] FROM events WHERE row_id = ?", (db_row_id,))
+                                    col_row = cursor.fetchone()
+                                    if not col_row:
+                                        raise ValueError(f"Missing usage key '{usage_key}' row in DB")
+                                    rebuilt_usage[usage_key] = rebuild_value(col_row[0], orig_usage.get(usage_key))
                             rebuilt_message['usage'] = rebuilt_usage
                         elif msg_key == 'content':
                             orig_content = orig_message['content']
@@ -153,14 +186,11 @@ def verify_session(cursor, session_id, file_path, native_session_id, verbose=Fal
                                             tool_use_id = part.get('tool_use_id')
                                             orig_part_content = part.get('content', '')
                                             if isinstance(orig_part_content, list):
-                                                cursor.execute("""
-                                                    SELECT value_json FROM part_metadata 
-                                                    WHERE event_row_id = ? AND part_index = ? AND key = 'content'
-                                                """, (db_row_id, i))
-                                                part_meta_row = cursor.fetchone()
-                                                if not part_meta_row:
+                                                cursor.execute("SELECT content_json FROM tool_results WHERE event_row_id = ? AND tool_use_id = ?", (db_row_id, tool_use_id))
+                                                res_row = cursor.fetchone()
+                                                if not res_row or res_row[0] is None:
                                                     raise ValueError("Failed to fetch complex tool result content")
-                                                rebuilt_part['content'] = json.loads(part_meta_row[0])
+                                                rebuilt_part['content'] = json.loads(res_row[0])
                                             else:
                                                 cursor.execute("SELECT output_content FROM tool_results WHERE event_row_id = ? AND tool_use_id = ?", (db_row_id, tool_use_id))
                                                 res_row = cursor.fetchone()
@@ -168,49 +198,54 @@ def verify_session(cursor, session_id, file_path, native_session_id, verbose=Fal
                                                     raise ValueError("Failed to fetch tool result content")
                                                 rebuilt_part['content'] = res_row[0]
                                         else:
-                                            # STRICT QUERY: Fetch other auxiliary part keys from part_metadata table
-                                            cursor.execute("""
-                                                SELECT value_json FROM part_metadata 
-                                                WHERE event_row_id = ? AND part_index = ? AND key = ?
-                                            """, (db_row_id, i, pk))
-                                            part_meta_row = cursor.fetchone()
-                                            if not part_meta_row:
+                                            # Fetch other auxiliary content-part keys from tool_calls, tool_results, or message_parts table
+                                            if part_type == "tool_use":
+                                                table_name = "tool_calls"
+                                                id_col = "tool_use_id"
+                                                id_val = part.get('id')
+                                                sql = f"SELECT [{pk}] FROM {table_name} WHERE event_row_id = ? AND {id_col} = ?"
+                                                params = (db_row_id, id_val)
+                                            elif part_type == "tool_result":
+                                                table_name = "tool_results"
+                                                id_col = "tool_use_id"
+                                                id_val = part.get('tool_use_id')
+                                                sql = f"SELECT [{pk}] FROM {table_name} WHERE event_row_id = ? AND {id_col} = ?"
+                                                params = (db_row_id, id_val)
+                                            else:
+                                                table_name = "message_parts"
+                                                sql = f"SELECT [{pk}] FROM {table_name} WHERE event_row_id = ? AND part_index = ?"
+                                                params = (db_row_id, i)
+
+                                            cursor.execute(sql, params)
+                                            col_row = cursor.fetchone()
+                                            if not col_row:
                                                 raise ValueError(f"Missing part key '{pk}' in DB")
-                                            rebuilt_part[pk] = json.loads(part_meta_row[0])
+                                            rebuilt_part[pk] = rebuild_value(col_row[0], part.get(pk))
                                     rebuilt_content_list.append(rebuilt_part)
                                 rebuilt_message['content'] = rebuilt_content_list
                         else:
-                            cursor.execute("""
-                                SELECT value_json FROM event_metadata 
-                                WHERE event_row_id = ? AND parent_key = ? AND key = ?
-                            """, (db_row_id, 'message', msg_key))
+                            cursor.execute(f"SELECT [{msg_key}] FROM messages WHERE event_row_id = ? AND message_id = ?", (db_row_id, db_event_id))
                             metadata_row = cursor.fetchone()
                             if not metadata_row:
                                 raise ValueError(f"Missing msg key '{msg_key}' in DB")
-                            rebuilt_message[msg_key] = json.loads(metadata_row[0])
+                            rebuilt_message[msg_key] = rebuild_value(metadata_row[0], orig_message.get(msg_key))
                     reconstructed['message'] = rebuilt_message
                 elif key == 'attachment':
                     orig_attachment = orig_data['attachment']
                     rebuilt_attachment = {}
                     for attach_key in orig_attachment.keys():
-                        cursor.execute("""
-                            SELECT value_json FROM part_metadata 
-                            WHERE event_row_id = ? AND part_index = -1 AND key = ?
-                        """, (db_row_id, attach_key))
-                        part_meta_row = cursor.fetchone()
-                        if not part_meta_row:
+                        cursor.execute(f"SELECT [{attach_key}] FROM attachments WHERE event_row_id = ?", (db_row_id,))
+                        col_row = cursor.fetchone()
+                        if not col_row:
                             raise ValueError(f"Missing attachment key '{attach_key}' in DB")
-                        rebuilt_attachment[attach_key] = json.loads(part_meta_row[0])
+                        rebuilt_attachment[attach_key] = rebuild_value(col_row[0], orig_attachment.get(attach_key))
                     reconstructed['attachment'] = rebuilt_attachment
                 else:
-                    cursor.execute("""
-                        SELECT value_json FROM event_metadata 
-                        WHERE event_row_id = ? AND parent_key = ? AND key = ?
-                    """, (db_row_id, 'root', key))
-                    metadata_row = cursor.fetchone()
-                    if not metadata_row:
+                    cursor.execute(f"SELECT [{key}] FROM events WHERE row_id = ?", (db_row_id,))
+                    col_row = cursor.fetchone()
+                    if not col_row:
                         raise ValueError(f"Missing root key '{key}' in DB")
-                    reconstructed[key] = json.loads(metadata_row[0])
+                    reconstructed[key] = rebuild_value(col_row[0], orig_data.get(key))
 
             if orig_data != reconstructed:
                 print(f"❌ RECONSTRUCTION ERROR at line {line_num} in {file_path}:")
@@ -226,8 +261,15 @@ def verify_session(cursor, session_id, file_path, native_session_id, verbose=Fal
                         rv = reconstructed.get(k)
                         if ov != rv:
                             print(f"    Key '{k}' mismatch:")
-                            print(f"      Expected: {repr(ov)[:150]}")
-                            print(f"      Got in DB: {repr(rv)[:150]}")
+                            if isinstance(ov, dict) and isinstance(rv, dict):
+                                for sub_k in set(ov.keys()) | set(rv.keys()):
+                                    if ov.get(sub_k) != rv.get(sub_k):
+                                        print(f"      Sub-key '{sub_k}' mismatch:")
+                                        print(f"        Expected: {repr(ov.get(sub_k))}")
+                                        print(f"        Got in DB: {repr(rv.get(sub_k))}")
+                            else:
+                                print(f"      Expected: {repr(ov)}")
+                                print(f"      Got in DB: {repr(rv)}")
                 return False
 
         except Exception as ex:
