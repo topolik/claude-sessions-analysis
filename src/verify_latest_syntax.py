@@ -130,7 +130,10 @@ def verify_latest_file_syntax_and_schema():
         # Command mode prompt context tracking
         'commandMode', 'prompt',
         # Dynamic tool whitelist restrictions
-        'allowedTools'
+        'allowedTools',
+        # Plan mode and subagent context fields
+        'planFilePath', 'planExists', 'planContent',
+        'isSubAgent', 'reminderType', 'source_uuid'
     }
     
     missed_fields_found = False

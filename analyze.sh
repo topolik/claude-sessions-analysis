@@ -32,10 +32,9 @@ docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "$SCRIPT_DIR:/workspace" \
   claude-analytics:latest \
-  sh -c "pandoc --standalone --metadata title=\"Claude Session Analytics & Schema Profile\" --mathjax --css=src/professional.css -o output/analytics_report.html output/analytics_report.md && pandoc --standalone --metadata title=\"Multi-Category Top 10 Deep Dive\" --mathjax --css=src/professional.css -o output/top_10_analytics.html output/top_10_analytics.md && pandoc --standalone --metadata title=\"Token Expenditure Audit & Observations\" --mathjax --css=src/professional.css -o output/observations.html output/observations.md"
+  sh -c "pandoc --standalone --metadata title=\"Claude Session Analytics & Schema Profile\" --mathjax --css=src/professional.css -o output/analytics_report.html output/analytics_report.md && pandoc --standalone --metadata title=\"Multi-Category Top 10 Deep Dive\" --mathjax --css=src/professional.css -o output/top_10_analytics.html output/top_10_analytics.md"
 
 echo "  -> Compiled: output/analytics_report.html"
 echo "  -> Compiled: output/top_10_analytics.html"
-echo "  -> Compiled: output/observations.html"
 
 echo -e "\n🎉 Downstream Analytical Reports & Dashboards Compiled Successfully!"
