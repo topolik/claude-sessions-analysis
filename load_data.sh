@@ -5,8 +5,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Ensure the output directory exists on the host
+# Ensure the output and source directories exist on the host
 mkdir -p output
+mkdir -p "$HOME/.claude/projects"
 
 echo "=== STEP 1: Building Docker Image (claude-analytics:latest) ==="
 # Build using the Dockerfile inside the analytics/ folder
@@ -18,6 +19,7 @@ if [ -n "$1" ]; then
   docker run --rm \
     --user "$(id -u):$(id -g)" \
     -v "$SCRIPT_DIR:/workspace" \
+    -v "$HOME/.claude/projects:/workspace/projects:ro" \
     claude-analytics:latest \
     "$@"
 else
@@ -25,6 +27,7 @@ else
   docker run --rm \
     --user "$(id -u):$(id -g)" \
     -v "$SCRIPT_DIR:/workspace" \
+    -v "$HOME/.claude/projects:/workspace/projects:ro" \
     claude-analytics:latest \
     python3 analytics/build_database.py
 
@@ -32,6 +35,7 @@ else
   docker run --rm \
     --user "$(id -u):$(id -g)" \
     -v "$SCRIPT_DIR:/workspace" \
+    -v "$HOME/.claude/projects:/workspace/projects:ro" \
     claude-analytics:latest \
     python3 analytics/verify_relational_reconstruction.py --all
 
@@ -39,6 +43,7 @@ else
   docker run --rm \
     --user "$(id -u):$(id -g)" \
     -v "$SCRIPT_DIR:/workspace" \
+    -v "$HOME/.claude/projects:/workspace/projects:ro" \
     claude-analytics:latest \
     python3 analytics/verify_latest_syntax.py
 
@@ -46,6 +51,7 @@ else
   docker run --rm \
     --user "$(id -u):$(id -g)" \
     -v "$SCRIPT_DIR:/workspace" \
+    -v "$HOME/.claude/projects:/workspace/projects:ro" \
     claude-analytics:latest \
     python3 analytics/verify_relational_reconstruction.py --latest
 
