@@ -1,0 +1,53 @@
+#!/bin/bash
+set -e
+
+# Resolve current script directory to be absolute and safe
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Ensure the output directory exists on the host
+mkdir -p output
+
+echo "=== STEP 1: Building Docker Image (claude-analytics:latest) ==="
+# Build using the Dockerfile inside the analytics/ folder
+docker build -t claude-analytics:latest -f analytics/Dockerfile analytics/
+
+# Run a specific command or Python script if an argument is passed
+if [ -n "$1" ]; then
+  echo "Executing custom command inside container: $*"
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    -v "$SCRIPT_DIR:/workspace" \
+    claude-analytics:latest \
+    "$@"
+else
+  echo -e "\n=== STEP 2: Ingesting/Updating Relational Database ==="
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    -v "$SCRIPT_DIR:/workspace" \
+    claude-analytics:latest \
+    python3 analytics/build_database.py
+
+  echo -e "\n=== STEP 3a: Executing Lossless Verification Test Suite (All Sessions) ==="
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    -v "$SCRIPT_DIR:/workspace" \
+    claude-analytics:latest \
+    python3 analytics/verify_relational_reconstruction.py --all
+
+  echo -e "\n=== STEP 3b: Executing Live Latest Syntax Schema Mapping ==="
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    -v "$SCRIPT_DIR:/workspace" \
+    claude-analytics:latest \
+    python3 analytics/verify_latest_syntax.py
+
+  echo -e "\n=== STEP 3c: Executing Relational 1:1 Reconstruction Verification (Latest Session) ==="
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    -v "$SCRIPT_DIR:/workspace" \
+    claude-analytics:latest \
+    python3 analytics/verify_relational_reconstruction.py --latest
+
+  echo -e "\n🎉 Step 1: Database Ingestion & Lossless Verification Complete!"
+fi

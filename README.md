@@ -4,13 +4,20 @@ This directory contains a robust, container-native data pipeline designed to par
 
 ---
 
-## 🚀 The Consolidated Ingestion & Analytics Pipeline
+## 🚀 The Two-Step Ingestion & Analytics Pipeline
 
-The workspace root contains an end-to-end containerized pipeline that processes all **514 files (110,904 events)** into a queryable relational database, runs lossless fidelity tests, profiles database columns, compiles analytics rankings, and outputs publication-grade HTML dashboards.
+The pipeline is split into two logical steps to isolate database population/verification from downstream analytics and report generation:
 
-**The ONLY requirement on the host system is Docker.** To build, ingest, and compile all dashboards, run:
+### Step 1: Ingest & Verify Data
+This step builds the Docker container, loads all raw session log files into the SQLite database, and executes strict 1:1 relational reconstruction tests to mathematically verify that zero data was lost:
 ```bash
-./run.sh
+./load_data.sh
+```
+
+### Step 2: Run Analytics & Compile Dashboards
+This step queries the relational database, profiles schema columns, compiles categorical rankings, and generates publication-grade HTML dashboards and reports:
+```bash
+./analyze.sh
 ```
 
 ---
@@ -19,7 +26,8 @@ The workspace root contains an end-to-end containerized pipeline that processes 
 
 ```
 /tmp/casd/
-├── run.sh                       # 🚀 Root entrypoint (Executes the whole pipeline)
+├── load_data.sh                 # ⚙️ Step 1 launcher (Loads database & runs lossless verification)
+├── analyze.sh                   # 📊 Step 2 launcher (Profiles schema & compiles HTML dashboards)
 ├── README.md                    # 📖 Project documentation
 ├── projects/                    # 📂 Raw session log JSONL files (Inputs)
 ├── output/                      # 📊 All auto-generated DB/HTML files (Strictly isolated!)
@@ -34,7 +42,8 @@ The workspace root contains an end-to-end containerized pipeline that processes 
     ├── Dockerfile               # Container environment specification
     ├── professional.css         # Publication-grade HTML stylesheet
     ├── build_database.py        # Database loader engine
-    ├── verify_data_lossless.py  # 100% Exhaustive semantic lossless test
+    ├── verify_latest_syntax.py  # Schema drift & key syntax evolution validator
+    ├── verify_relational_reconstruction.py # 100% Relational reconstruction validator (--all / --latest)
     ├── run_analytics.py         # Schema profiling query module
     └── analyze_top_10.py        # Multi-category rankings query module
 ```
