@@ -10,8 +10,8 @@ mkdir -p output
 mkdir -p "$HOME/.claude/projects"
 
 echo "=== STEP 1: Building Docker Image (claude-analytics:latest) ==="
-# Build using the Dockerfile inside the analytics/ folder
-docker build -t claude-analytics:latest -f analytics/Dockerfile analytics/
+# Build using the Dockerfile inside the src/ folder
+docker build -t claude-analytics:latest -f src/Dockerfile src/
 
 # Run a specific command or Python script if an argument is passed
 if [ -n "$1" ]; then
@@ -29,7 +29,7 @@ else
     -v "$SCRIPT_DIR:/workspace" \
     -v "$HOME/.claude/projects:/workspace/projects:ro" \
     claude-analytics:latest \
-    python3 analytics/build_database.py
+    python3 src/build_database.py
 
   echo -e "\n=== STEP 3a: Executing Lossless Verification Test Suite (All Sessions) ==="
   docker run --rm \
@@ -37,7 +37,7 @@ else
     -v "$SCRIPT_DIR:/workspace" \
     -v "$HOME/.claude/projects:/workspace/projects:ro" \
     claude-analytics:latest \
-    python3 analytics/verify_relational_reconstruction.py --all
+    python3 src/verify_relational_reconstruction.py --all
 
   echo -e "\n=== STEP 3b: Executing Live Latest Syntax Schema Mapping ==="
   docker run --rm \
@@ -45,7 +45,7 @@ else
     -v "$SCRIPT_DIR:/workspace" \
     -v "$HOME/.claude/projects:/workspace/projects:ro" \
     claude-analytics:latest \
-    python3 analytics/verify_latest_syntax.py
+    python3 src/verify_latest_syntax.py
 
   echo -e "\n=== STEP 3c: Executing Relational 1:1 Reconstruction Verification (Latest Session) ==="
   docker run --rm \
@@ -53,7 +53,7 @@ else
     -v "$SCRIPT_DIR:/workspace" \
     -v "$HOME/.claude/projects:/workspace/projects:ro" \
     claude-analytics:latest \
-    python3 analytics/verify_relational_reconstruction.py --latest
+    python3 src/verify_relational_reconstruction.py --latest
 
   echo -e "\n🎉 Database Ingestion & Lossless Verification Complete!"
 fi

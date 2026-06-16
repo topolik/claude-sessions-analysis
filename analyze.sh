@@ -17,14 +17,14 @@ docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "$SCRIPT_DIR:/workspace" \
   claude-analytics:latest \
-  python3 analytics/run_analytics.py
+  python3 src/run_analytics.py
 
 echo -e "\n=== STEP 2: Generating Multi-Category Top 10 Rank Deep Dive ==="
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "$SCRIPT_DIR:/workspace" \
   claude-analytics:latest \
-  python3 analytics/analyze_top_10.py
+  python3 src/analyze_top_10.py
 
 # Containerized compilation of compiled reports to elegant HTML using pandoc
 echo -e "\n=== STEP 3: Compiling Markdown Reports to Professional HTML (Inside Container) ==="
@@ -32,7 +32,7 @@ docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "$SCRIPT_DIR:/workspace" \
   claude-analytics:latest \
-  sh -c "pandoc --standalone --metadata title=\"Claude Session Analytics & Schema Profile\" --mathjax --css=analytics/professional.css -o output/analytics_report.html output/analytics_report.md && pandoc --standalone --metadata title=\"Multi-Category Top 10 Deep Dive\" --mathjax --css=analytics/professional.css -o output/top_10_analytics.html output/top_10_analytics.md && pandoc --standalone --metadata title=\"Token Expenditure Audit & Observations\" --mathjax --css=analytics/professional.css -o output/observations.html output/observations.md"
+  sh -c "pandoc --standalone --metadata title=\"Claude Session Analytics & Schema Profile\" --mathjax --css=src/professional.css -o output/analytics_report.html output/analytics_report.md && pandoc --standalone --metadata title=\"Multi-Category Top 10 Deep Dive\" --mathjax --css=src/professional.css -o output/top_10_analytics.html output/top_10_analytics.md && pandoc --standalone --metadata title=\"Token Expenditure Audit & Observations\" --mathjax --css=src/professional.css -o output/observations.html output/observations.md"
 
 echo "  -> Compiled: output/analytics_report.html"
 echo "  -> Compiled: output/top_10_analytics.html"

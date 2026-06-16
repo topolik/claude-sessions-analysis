@@ -20,7 +20,7 @@ Based on analysis and suggestions:
 * Deep-dive into identified problems to understand the core issue.
 * Create new analytics scripts and run them:
   ```bash
-  ./load_data.sh python3 analytics/new_script.py
+  ./load_data.sh python3 src/new_script.py
   ```
 * Confirm findings based on real data from the database.
 * Provide solutions.

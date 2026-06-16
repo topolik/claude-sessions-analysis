@@ -26,7 +26,7 @@ Review the generated reports in `output/` to audit token consumption, identify b
 ### Step 4: Extend (Deep-Dive & Optimization)
 Create new analytics scripts and run them inside the container:
 ```bash
-./load_data.sh python3 analytics/your_script.py
+./load_data.sh python3 src/your_script.py
 ```
 Or run custom SQL queries directly:
 ```bash
@@ -50,7 +50,7 @@ Or run custom SQL queries directly:
 │   ├── analytics_report.{md,html}  # Schema profiling report & dashboard
 │   ├── top_10_analytics.{md,html}  # Multi-category Top 10 rankings & dashboard
 │   └── solutions/                  # Generated optimization configs & hooks
-└── analytics/                      # Container & Python script sources
+└── src/                            # Container & Python script sources
     ├── Dockerfile                  # Container environment specification
     ├── professional.css            # HTML stylesheet for dashboards
     ├── build_database.py           # Database loader (dynamic table parsing & schema emission)
