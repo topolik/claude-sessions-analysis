@@ -98,10 +98,10 @@ ORDER BY efficiency_ratio ASC;
 └── analytics/                   # ⚙️ All container & Python script sources (Isolated!)
     ├── Dockerfile               # Container environment specification
     ├── professional.css         # Publication-grade HTML stylesheet
-    ├── build_database.py        # Database loader engine
+    ├── build_database.py        # Database loader engine (Features dynamic table parsing & schema emission)
     ├── verify_latest_syntax.py  # Schema drift & key syntax evolution validator
     ├── verify_relational_reconstruction.py # 100% Relational reconstruction validator (--all / --latest)
-    ├── run_analytics.py         # Schema profiling query module
+    ├── run_analytics.py         # Schema profiling query module (Features dynamic table iteration)
     └── analyze_top_10.py        # Multi-category rankings query module
 ```
 
@@ -110,6 +110,7 @@ ORDER BY efficiency_ratio ASC;
 ## 🗃️ Generated Assets (Saved in `output/`):
 
 1. **`claude_sessions.db`**: A normalized relational SQLite database storing all sessions, events, tool calls, and content payloads (100% losslessly populated and verified).
-2. **`observations.html` / `observations.md`**: A detailed report auditing the workspace's $O(T^2)$ quadratic token expenditure with actionable guidelines for transitioning to micro-sessions for 97.0% cost savings.
-3. **`analytics_report.html` / `analytics_report.md`**: A database field-level profiling report tracking column population rates, category value distributions, and token summaries.
-4. **`top_10_analytics.html` / `top_10_analytics.md`**: Deep-dive rankings of the top 10 items across key operational categories (longest sessions, highest token costs, active directories, tool frequencies, error rates, large payloads, and turn-by-turn context spikes).
+2. **`schema.sql`**: An automatically emitted complete SQL schema definition extracted directly from the loaded `claude_sessions.db`.
+3. **`observations.html` / `observations.md`**: A detailed report auditing the workspace's $O(T^2)$ quadratic token expenditure with actionable guidelines for transitioning to micro-sessions for 97.0% cost savings.
+4. **`analytics_report.html` / `analytics_report.md`**: A database field-level profiling report tracking column population rates, category value distributions, and token summaries (dynamically profiles all auto-discovered tables).
+5. **`top_10_analytics.html` / `top_10_analytics.md`**: Deep-dive rankings of the top 10 items across key operational categories (longest sessions, highest token costs, active directories, tool frequencies, error rates, large payloads, and turn-by-turn context spikes).

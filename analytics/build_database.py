@@ -394,6 +394,39 @@ def ingest_files():
             print(f"Ingested {file_idx}/{len(jsonl_files)} files. Inserted {total_rows_inserted} event rows...")
 
     conn.commit()
+
+    print("\nTable Statistics:")
+    print("-" * 50)
+    # Dynamically fetch user-defined tables sorted alphabetically
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    tables = [row[0] for row in cursor.fetchall()]
+    for tbl in tables:
+        try:
+            cursor.execute(f"SELECT COUNT(*) FROM [{tbl}]")
+            cnt = cursor.fetchone()[0]
+            print(f"  {tbl:<15} : {cnt:,} rows")
+        except sqlite3.OperationalError:
+            print(f"  {tbl:<15} : Table does not exist")
+    print("-" * 50)
+
+    # Emit final SQL schema to output/schema.sql
+    schema_path = os.path.join("output", "schema.sql")
+    try:
+        cursor.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type DESC, name")
+        schema_rows = cursor.fetchall()
+        schema_statements = []
+        for row in schema_rows:
+            stmt = row[0].strip()
+            if not stmt.endswith(";"):
+                stmt += ";"
+            schema_statements.append(stmt)
+        schema_content = "\n\n".join(schema_statements)
+        with open(schema_path, "w", encoding="utf-8") as f:
+            f.write(schema_content + "\n")
+        print(f"Emitted database schema to: {schema_path}")
+    except Exception as e:
+        print(f"Failed to emit database schema: {e}")
+
     conn.close()
     print(f"\nSuccessfully finished ingestion!")
     print(f"Total sessions: {len(registered_sessions)}")
