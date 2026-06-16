@@ -7,7 +7,14 @@ Use your agent with:
 Run The 4-Step Workflow and analyze token use.
 ```
 
-Then:
+Then (repeat):
+
+```
+What are the 5 most important questions to ask?
+```
+
+For example:
+
 ```
   1. **Where are my tokens going?** Break down total token spend by tool name, session, and event
   type. Show input vs output vs cache_read vs cache_creation ratios. Identify the top 10
@@ -69,7 +76,6 @@ Or
   isn't just curiosity — it tells you when to trust the agent with autonomous work vs. when
   to keep it on a shorter leash.
 ```
-
 
 
 ---
