@@ -52,13 +52,21 @@ def verify_session(cursor, session_id, file_path, native_session_id, verbose=Fal
     """, (session_id,))
     db_rows = cursor.fetchall()
 
-    # 2. Read original file lines
+    # 2. Read original file lines (mirror loader: skip blanks AND lines the
+    #    loader could not parse as JSON, e.g. NUL-padded/corrupt source bytes,
+    #    so the 1:1 audit compares against the exact set of ingested records)
     original_lines = []
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
-                if line.strip():
-                    original_lines.append(line.strip())
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                original_lines.append(stripped)
     except Exception as e:
         print(f"  FAILED: Cannot open original file {file_path}: {e}")
         return False
