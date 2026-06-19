@@ -1,3 +1,5 @@
+import argparse
+from datetime import datetime
 import os
 import sqlite3
 import glob
@@ -114,14 +116,19 @@ def setup_database(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_parts_event ON message_parts(event_row_id);")
     conn.commit()
 
-def ingest_files():
+def ingest_files(since=None):
     db_path = os.path.join("output", "claude_sessions.db")
     os.makedirs("output", exist_ok=True)
-    
-    # If old DB exists, delete it for a clean re-load
-    if os.path.exists(db_path):
-        os.remove(db_path)
-        print(f"Removed existing database: {db_path}")
+
+    if since is None:
+        # Full rebuild: nuke and re-create
+        if os.path.exists(db_path):
+            os.remove(db_path)
+            print(f"Removed existing database: {db_path}")
+    else:
+        if not os.path.exists(db_path):
+            print(f"No existing database found. Running full ingestion instead.")
+            since = None
 
     conn = sqlite3.connect(db_path)
     setup_database(conn)
@@ -130,7 +137,13 @@ def ingest_files():
     # Find all JSONL files recursively
     file_pattern = os.path.join("projects", "**", "*.jsonl")
     jsonl_files = glob.glob(file_pattern, recursive=True)
-    print(f"Found {len(jsonl_files)} session log files to ingest.")
+
+    if since is not None:
+        cutoff = since.timestamp()
+        jsonl_files = [f for f in jsonl_files if os.path.getmtime(f) >= cutoff]
+        print(f"Found {len(jsonl_files)} session log files modified since {since.isoformat()}.")
+    else:
+        print(f"Found {len(jsonl_files)} session log files to ingest.")
 
     registered_sessions = set()
     total_rows_inserted = 0
@@ -139,6 +152,17 @@ def ingest_files():
         # 1. Generate unique file-level session_id
         import hashlib
         session_id = hashlib.md5(file_path.encode('utf-8')).hexdigest()
+
+        # In incremental mode, purge old data for this session before re-ingesting
+        if since is not None:
+            cursor.execute("SELECT row_id FROM events WHERE session_id = ?", (session_id,))
+            old_row_ids = [r[0] for r in cursor.fetchall()]
+            if old_row_ids:
+                placeholders = ','.join(['?'] * len(old_row_ids))
+                for child_table in ('messages', 'tool_calls', 'tool_results', 'attachments', 'message_parts'):
+                    cursor.execute(f"DELETE FROM {child_table} WHERE event_row_id IN ({placeholders})", old_row_ids)
+                cursor.execute(f"DELETE FROM events WHERE session_id = ?", (session_id,))
+            cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
 
         # 2. Scan the file for any native sessionId
         native_session_id = None
@@ -433,4 +457,9 @@ def ingest_files():
     print(f"Total event rows loaded: {total_rows_inserted}")
 
 if __name__ == '__main__':
-    ingest_files()
+    parser = argparse.ArgumentParser(description='Ingest Claude session logs into SQLite.')
+    parser.add_argument('--since', type=lambda s: datetime.strptime(s, '%Y-%m-%dT%H:%M:%S'),
+                        metavar='YYYY-MM-DDTHH:MM:SS',
+                        help='Only re-ingest sessions modified since this timestamp (incremental mode).')
+    args = parser.parse_args()
+    ingest_files(since=args.since)
