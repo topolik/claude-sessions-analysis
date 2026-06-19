@@ -10,7 +10,7 @@ _known_columns = {}
 
 def ensure_columns_exist(cursor, table_name, col_names):
     if table_name not in _known_columns:
-        cursor.execute(f"PRAGMA table_info({table_name})")
+        cursor.execute(f"PRAGMA table_info([{table_name}])")
         _known_columns[table_name] = {col[1] for col in cursor.fetchall()}
         
     for col in col_names:
@@ -128,8 +128,7 @@ def ingest_files(since=None):
             print(f"Removed existing database: {db_path}")
     else:
         if not os.path.exists(db_path):
-            print(f"No existing database found. Running full ingestion instead.")
-            since = None
+            print(f"No existing database found. Creating a fresh database filtered to sessions modified since {since.isoformat()}.")
 
     conn = sqlite3.connect(db_path)
     setup_database(conn)

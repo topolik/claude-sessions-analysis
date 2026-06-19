@@ -126,7 +126,7 @@ def run_top_10_analytics():
         report.append("| Rank | File Path | Event Type | Role | Content Length (chars) | Message Snippet |")
         report.append("| :--- | :--- | :--- | :--- | :--- | :--- |")
         for idx, r in df_msg.iterrows():
-            snippet = r['snippet'].replace('\n', ' ').replace('|', '\\|')
+            snippet = (r['snippet'] or '').replace('\n', ' ').replace('|', '\\|')
             report.append(f"| {idx+1} | `{r['file_path']}` | `{r['event_type']}` | `{r['role']}` | {r['length']:,} | {snippet}... |")
         report.append("\n")
 
@@ -145,9 +145,9 @@ def run_top_10_analytics():
         report.append("| Rank | File Path | Tool Name | Output Length (chars) | Output Snippet |")
         report.append("| :--- | :--- | :--- | :--- | :--- |")
         for idx, r in df_tool_output.iterrows():
-            snippet = r['snippet'].replace('\n', ' ').replace('|', '\\|')
+            snippet = (r['snippet'] or '').replace('\n', ' ').replace('|', '\\|')
             report.append(f"| {idx+1} | `{r['file_path']}` | `{r['tool_name']}` | {r['length']:,} | {snippet}... |")
-            report.append("\n")
+        report.append("\n")
 
     # Category 8: Top 10 Single-Turn Token Bursts
     if table_and_cols_exist(conn, "events", ["session_id", "event_type", "input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"]) and table_and_cols_exist(conn, "sessions", ["session_id", "file_path"]):

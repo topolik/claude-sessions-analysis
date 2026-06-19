@@ -27,7 +27,6 @@ Queries the relational database, profiles schema columns, compiles categorical r
 Review the generated HTML dashboards in `output/` to audit token consumption, identify bottlenecks, and propose optimizations:
 * `output/analytics_report.html` — Schema field-level profiling and categorical distributions
 * `output/top_10_analytics.html` — Top 10 rankings across sessions, tokens, tools, and payloads
-* `output/observations.html` — Cost & efficiency deep-dive: session ROI, failure patterns, subagent costs, context growth
 
 ### Step 4: Extend (Custom Queries & New Scripts)
 Based on analysis and suggestions:

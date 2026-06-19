@@ -27,7 +27,7 @@ def profile_database():
     tables = [row[0] for row in cursor.fetchall()]
     
     for table in tables:
-        count = pd.read_sql_query(f"SELECT COUNT(*) as cnt FROM {table}", conn).iloc[0]["cnt"]
+        count = pd.read_sql_query(f"SELECT COUNT(*) as cnt FROM [{table}]", conn).iloc[0]["cnt"]
         desc = {
             "sessions": "Unique user session references.",
             "events": "Chronological stream of all transaction events (user, assistant, system, etc.) with explicit root-level columns.",

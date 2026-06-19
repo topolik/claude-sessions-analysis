@@ -60,8 +60,7 @@ Run "The Claude Analysis Workflow" to load claude sessions for the past 7 days a
     ├── verify_latest_syntax.py     # Schema drift & syntax evolution validator
     ├── verify_relational_reconstruction.py  # Relational reconstruction validator (--all / --latest)
     ├── run_analytics.py            # Schema profiling query module
-    ├── analyze_top_10.py           # Multi-category rankings query module
-    └── deep_dive.py                # Cost and efficiency deep-dive analysis
+    └── analyze_top_10.py           # Multi-category rankings query module
 ```
 
 ---
@@ -72,7 +71,6 @@ Run "The Claude Analysis Workflow" to load claude sessions for the past 7 days a
 |------|-------------|
 | `claude_sessions.db` | Normalized relational SQLite database — sessions, events, tool calls, content payloads (losslessly verified) |
 | `schema.sql` | Auto-emitted SQL schema definition extracted from the loaded database |
-| `observations.{md,html}` | Cost & efficiency deep-dive: session ROI, failure patterns, subagent costs, context growth, temporal analysis |
 | `analytics_report.{md,html}` | Schema field-level profiling report & dashboard |
 | `top_10_analytics.{md,html}` | Multi-category Top 10 rankings report & dashboard |
 | `solutions/` | Generated optimization configs & hooks |
