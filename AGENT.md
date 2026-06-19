@@ -24,21 +24,26 @@ Queries the relational database, profiles schema columns, compiles categorical r
 ```
 
 ### Step 3: Analyze & Suggest
-Review the generated reports in `output/` to audit token consumption, identify bottlenecks, and propose optimizations for your Claude Code workflows.
+Review the generated HTML dashboards in `output/` to audit token consumption, identify bottlenecks, and propose optimizations:
+* `output/analytics_report.html` — Schema field-level profiling and categorical distributions
+* `output/top_10_analytics.html` — Top 10 rankings across sessions, tokens, tools, and payloads
+* `output/observations.html` — Cost & efficiency deep-dive: session ROI, failure patterns, subagent costs, context growth
 
-### Step 4: Extend (Deep-Dive & Optimization)
+### Step 4: Extend (Custom Queries & New Scripts)
 Based on analysis and suggestions:
+* Deep-dive into identified problems to understand the core issue and confirm findings based on real data from the database.
+* Refer to `output/schema.sql` for the full database schema when writing queries.
 * Run custom SQL queries directly:
   ```bash
   ./load_data.sh sqlite3 output/claude_sessions.db
   ```
-* Deep-dive into identified problems to understand the core issue.
-* Confirm findings based on real data from the database.
 * Create new analytics scripts and run them:
   ```bash
   ./load_data.sh python3 src/new_script.py
   ```
 * Provide solutions.
+
+> **Note:** `load_data.sh` doubles as a Docker wrapper — any positional arguments are passed directly to `docker run` inside the container with the workspace and projects directories mounted.
 
 ## More Information
 Refer to the main [README.md](README.md) for architecture, directory structure, and execution details.

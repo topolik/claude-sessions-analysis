@@ -1,5 +1,6 @@
 import argparse
 from datetime import datetime
+import hashlib
 import os
 import sqlite3
 import glob
@@ -150,7 +151,6 @@ def ingest_files(since=None):
 
     for file_idx, file_path in enumerate(jsonl_files, 1):
         # 1. Generate unique file-level session_id
-        import hashlib
         session_id = hashlib.md5(file_path.encode('utf-8')).hexdigest()
 
         # In incremental mode, purge old data for this session before re-ingesting
