@@ -28,6 +28,8 @@ Review the generated HTML dashboards in `output/` to audit token consumption, id
 * `output/analytics_report.html` — Schema field-level profiling and categorical distributions
 * `output/top_10_analytics.html` — Top 10 rankings across sessions, tokens, tools, and payloads
 
+When estimating API costs, use the official pricing at https://platform.claude.com/docs/en/about-claude/pricing — fetch it to get current rates before generating cost reports.
+
 ### Step 4: Extend (Custom Queries & New Scripts)
 Based on analysis and suggestions:
 * Deep-dive into identified problems to understand the core issue and confirm findings based on real data from the database.
