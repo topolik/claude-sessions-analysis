@@ -30,6 +30,8 @@ Review the generated HTML dashboards in `output/` to audit token consumption, id
 
 When estimating API costs, use the official pricing at https://platform.claude.com/docs/en/about-claude/pricing — fetch it to get current rates before generating cost reports.
 
+**Report format:** Generate reports as markdown, then convert to HTML with pandoc inside the container (`./load_data.sh pandoc ...`). Do NOT use the artifact-design skill or Artifact tool — they are slow and unnecessary for data reports.
+
 ### Step 4: Extend (Custom Queries & New Scripts)
 Based on analysis and suggestions:
 * Deep-dive into identified problems to understand the core issue and confirm findings based on real data from the database.
